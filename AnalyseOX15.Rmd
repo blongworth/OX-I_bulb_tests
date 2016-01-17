@@ -1,0 +1,38 @@
+---
+title: "AnalyseOX15"
+author: "Brett Longworth"
+date: "1/16/2016"
+output: html_document
+---
+
+Script to plot data from an OX-I bulb test.
+
+Read the data...
+
+```{r}
+library(dplyr)
+library(ggplot2)
+dataa <- read.delim("USAMS011316_TargetTable.xls")
+dataa$run <- "A"
+datab <- read.delim("USAMS011316B_TargetTable.xls")
+datab$run <- "B"
+data <- rbind(dataa, datab)
+data <- data %>% filter(grepl("OX-I", SampleName), !grepl("OX-II", SampleName))
+
+```
+
+Summary plots
+
+```{r, echo=FALSE}
+ggplot(data, aes(SampleName, NormRat)) + geom_boxplot() + facet_grid(. ~ run)
+```
+
+```{r, echo=FALSE}
+data %>% 
+  select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
+  mutate(merr = max(IntErr, ExtErr)) %>% 
+  group_by(run, SampleName) %>% 
+  summarise(meanfm = mean(NormRat),
+            sdfm = sd(NormRat))
+```
+
