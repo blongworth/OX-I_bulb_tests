@@ -5,34 +5,86 @@ date: "1/16/2016"
 output: html_document
 ---
 
-Script to plot data from an OX-I bulb test.
+# Summary
 
-Read the data...
+Results from the OX-I/15A OX-I/15B bulb tests. The normalizing standard is OX-I/13B. Data are not blank corrected, but this should not affect the results. The wheel was run twice, and the second run is clearly the better of the two. Both runs indicate that all three OX's are the same within error. Summary plots and relevant summary data are below.
 
-```{r}
+## Read the data...
+
+```{r, message=FALSE}
+library(broom)
+library(knitr)
 library(dplyr)
 library(ggplot2)
+
+options(digits = 5)
+
+#define CI
+
+ci <- function(x) 1.96 * sqrt((var(x)/length(x)))
+#Load both runs
 dataa <- read.delim("USAMS011316_TargetTable.xls")
 dataa$run <- "A"
 datab <- read.delim("USAMS011316B_TargetTable.xls")
 datab$run <- "B"
+
+#Combine runs
 data <- rbind(dataa, datab)
+
+#Just look at OX-I
 data <- data %>% filter(grepl("OX-I", SampleName), !grepl("OX-II", SampleName))
 
 ```
 
-Summary plots
+## Summary plots
 
 ```{r, echo=FALSE}
 ggplot(data, aes(SampleName, NormRat)) + geom_boxplot() + facet_grid(. ~ run)
 ```
 
+## Summary data
+
+Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re), sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence interval on the mean.
 ```{r, echo=FALSE}
-data %>% 
+sum <- data %>% 
   select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
-  mutate(merr = max(IntErr, ExtErr)) %>% 
+  mutate(merr = pmax(IntErr, ExtErr)) %>% 
   group_by(run, SampleName) %>% 
-  summarise(meanfm = mean(NormRat),
-            sdfm = sd(NormRat))
+  summarise(Fm.m = mean(NormRat),
+            Fm.re = mean(merr),
+            Fm.sd = sd(NormRat),
+            CIL = mean(NormRat) - ci(NormRat), 
+            CIH = mean(NormRat) + ci(NormRat) 
+            )
+kable(sum)
+```
+
+
+## Statistical tests
+
+
+An analysis of variance for each run separately...
+
+```{r}
+ aov <- data %>% 
+   select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
+   mutate(merr = max(IntErr, ExtErr)) %>% 
+   group_by(run) %>%
+   do(tidy(aov(NormRat ~ SampleName, data = .)))
+ kable(aov)
+```
+
+And together, using run and sample type as factors....
+
+```{r}
+data.aov <- aov(NormRat ~ SampleName * run, data)
+kable(tidy(data.aov))
+```
+
+For both analyses, we can accept the null hypothesis (means are the same) on pretty much any level.
+
+Summary data from the ANOVA...
+```{r}
+print(model.tables(data.aov,"means"),digits=5)
 ```
 
