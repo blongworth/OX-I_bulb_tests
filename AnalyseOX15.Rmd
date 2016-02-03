@@ -2,7 +2,7 @@
 title: "AnalyseOX15"
 author: "Brett Longworth"
 date: "1/16/2016"
-output: html_document
+output: pdf_document
 ---
 
 # Summary
@@ -11,7 +11,7 @@ Results from the OX-I/15A OX-I/15B bulb tests. The normalizing standard is OX-I/
 
 ## Read the data...
 
-```{r, message=FALSE}
+```{r, warning=FALSE, message=FALSE}
 library(broom)
 library(knitr)
 library(dplyr)
@@ -22,29 +22,37 @@ options(digits = 5)
 #define CI
 
 ci <- function(x) 1.96 * sqrt((var(x)/length(x)))
+
 #Load both runs
 dataa <- read.delim("USAMS011316_TargetTable.xls")
-dataa$run <- "A"
+dataa$run <- "USAMSA"
 datab <- read.delim("USAMS011316B_TargetTable.xls")
-datab$run <- "B"
+datab$run <- "USAMSB"
+
+# load cfams
+datac  <- read.delim("CFAMS101215_TargetTable.xls")
+datac$run <- "CFAMS"
 
 #Combine runs
-data <- rbind(dataa, datab)
+data <- rbind(dataa, datab, datac)
 
 #Just look at OX-I
-data <- data %>% filter(grepl("OX-I", SampleName), !grepl("OX-II", SampleName))
-
+data <- data %>% filter(Pos < 37,
+                        grepl("OX-I", SampleName), 
+                  			!grepl("OX-II", SampleName))
 ```
 
 ## Summary plots
 
 ```{r, echo=FALSE}
 ggplot(data, aes(SampleName, NormRat)) + geom_boxplot() + facet_grid(. ~ run)
+
 ```
 
 ## Summary data
 
 Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re), sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence interval on the mean.
+
 ```{r, echo=FALSE}
 sum <- data %>% 
   select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
@@ -59,11 +67,28 @@ sum <- data %>%
 kable(sum)
 ```
 
+Using data from CFAMS and the better USAMS run, pooled:
+
+```{r, echo=FALSE}
+sum <- data %>% 
+  filter(run != "USAMSA") %>%
+  select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
+  mutate(merr = pmax(IntErr, ExtErr)) %>% 
+  group_by(SampleName) %>% 
+  summarise(Fm.m = mean(NormRat),
+            Fm.re = mean(merr),
+            Fm.sd = sd(NormRat),
+            CIL = mean(NormRat) - ci(NormRat), 
+            CIH = mean(NormRat) + ci(NormRat) 
+            )
+kable(sum)
+```
+
 
 ## Statistical tests
 
 
-An analysis of variance for each run separately...
+### An analysis of variance for each run separately...
 
 ```{r}
  aov <- data %>% 
@@ -74,7 +99,7 @@ An analysis of variance for each run separately...
  kable(aov)
 ```
 
-And together, using run and sample type as factors....
+### And together, using run and sample type as factors....
 
 ```{r}
 data.aov <- aov(NormRat ~ SampleName * run, data)
@@ -83,7 +108,7 @@ kable(tidy(data.aov))
 
 For both analyses, we can accept the null hypothesis (means are the same) on pretty much any level.
 
-Summary data from the ANOVA...
+### Summary data from the ANOVA...
 ```{r}
 print(model.tables(data.aov,"means"),digits=5)
 ```
