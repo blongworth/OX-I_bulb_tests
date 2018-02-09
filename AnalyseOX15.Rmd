@@ -2,14 +2,22 @@
 title: "AnalyseOX15"
 author: "Brett Longworth"
 date: "1/16/2016"
-output: pdf_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 # Summary
 
-Results from the OX-I/15A OX-I/15B bulb tests. The normalizing standard is OX-I/13B. Data are not blank corrected, but this should not affect the results. The wheel was run twice, and the second run is clearly the better of the two. Both runs indicate that all three OX's are the same within error. Summary plots and relevant summary data are below.
+Results from the OX-I/15A OX-I/15B bulb tests. The data are normalized using
+snicser with OX-I/13B as the normalizing standard. Data are not blank
+corrected, but this should not affect the results. The wheel was run twice, and
+the second run is clearly the better of the two. Both runs indicate that all
+three OX's are the same within error. Summary plots and relevant summary data
+are below.
 
-## Read the data...
+
+## Setup
 
 ```{r, warning=FALSE, message=FALSE}
 library(broom)
@@ -20,9 +28,13 @@ library(ggplot2)
 options(digits = 5)
 
 #define CI
-
 ci <- function(x) 1.96 * sqrt((var(x)/length(x)))
+```
 
+
+## Read the data...
+
+```{r}
 #Load both runs
 dataa <- read.delim("USAMS011316_TargetTable.xls")
 dataa$run <- "USAMSA"
@@ -45,25 +57,29 @@ data <- data %>% filter(Pos < 37,
 ## Summary plots
 
 ```{r, echo=FALSE}
-ggplot(data, aes(SampleName, NormRat)) + geom_boxplot() + facet_grid(. ~ run)
-
+ggplot(data, aes(SampleName, NormRat)) +
+  geom_boxplot() + 
+  facet_grid(. ~ run)
 ```
 
 ## Summary data
 
-Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re), sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence interval on the mean.
+Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re),
+sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence
+interval on the mean.
 
 ```{r, echo=FALSE}
 sum <- data %>% 
   select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
   mutate(merr = pmax(IntErr, ExtErr)) %>% 
   group_by(run, SampleName) %>% 
-  summarise(Fm.m = mean(NormRat),
-            Fm.re = mean(merr),
-            Fm.sd = sd(NormRat),
-            CIL = mean(NormRat) - ci(NormRat), 
-            CIH = mean(NormRat) + ci(NormRat) 
-            )
+  summarise("Mean Fm" = mean(NormRat),
+            "Mean RE" = mean(merr),
+            "Std Dev" = sd(NormRat),
+            "95% CI" = paste(signif(mean(NormRat) - ci(NormRat), digits = 5), "-",
+                             signif(mean(NormRat) + ci(NormRat), digits = 5)),
+            N = n()
+  )
 kable(sum)
 ```
 
@@ -75,18 +91,20 @@ sum <- data %>%
   select(SampleName, run, NormRat, IntErr, ExtErr) %>% 
   mutate(merr = pmax(IntErr, ExtErr)) %>% 
   group_by(SampleName) %>% 
-  summarise(Fm.m = mean(NormRat),
-            Fm.re = mean(merr),
-            Fm.sd = sd(NormRat),
-            CIL = mean(NormRat) - ci(NormRat), 
-            CIH = mean(NormRat) + ci(NormRat) 
-            )
+  summarise("Mean Fm" = mean(NormRat),
+            "Mean RE" = mean(merr),
+            "Std Dev" = sd(NormRat),
+            "95% CI" = paste(signif(mean(NormRat) - ci(NormRat), digits = 5), "-",
+                             signif(mean(NormRat) + ci(NormRat), digits = 5)),
+            N = n()
+  )
 kable(sum)
 ```
 
 
 ## Statistical tests
 
+TODO: describe statistical tests.
 
 ### An analysis of variance for each run separately...
 
