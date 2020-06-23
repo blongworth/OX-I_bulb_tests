@@ -1,0 +1,106 @@
+---
+title: "OX-I/20 Bulb tests"
+author: "Brett Longworth"
+date: "June 23, 2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+# Summary
+
+Results from the OX-I/20 bulb tests. Data are examined as raw ratios
+(with online d13C correction applied), and as normalized using snicser with
+OX-I/18 as the normalizing standard. Data are not blank corrected, but this
+should not affect the results. Summary plots and relevant summary data are
+below.
+
+
+## Setup
+
+```{r, warning=FALSE, message=FALSE}
+library(broom)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(amstools)
+
+options(digits = 5)
+
+#define CI
+ci <- function(x) 1.96 * sqrt((var(x)/length(x)))
+```
+
+
+## Read the data...
+
+```{r}
+# load cfams
+data <- getWheel("CFAMS061720") %>% 
+  filter(grepl("O[xX]", sample_name),
+         wheel_pos != 84) %>%
+  mutate(system = substr(wheel, 0, 5),
+         name = recode(sample_name,
+                      "OX-1/18 B UCI-1681B" = "OX-I/18B",
+                      "Oxalic Acid I granules (SRM 4990 B HOxI)" = "OX-I Solid",
+                      "OXI/20B UCI#1684B " = "OX-I/20B",
+                      "OXI/20C UCI#1684AC" = "OX-I/20C"),
+         Fm = ifelse(is.na(fm_mb_corr), fm_corr, fm_mb_corr),
+         sig_Fm = ifelse(is.na(fm_mb_corr), sig_fm_corr, sig_fm_mb_corr)) %>% 
+  group_by(sample_name) %>% 
+    mutate(Rep = 1:length(Fm)) %>%
+  ungroup()
+```
+
+## Summary plots
+
+### CFAMS and USAMS data
+
+```{r, echo=FALSE}
+data %>% 
+ggplot(aes(name, Fm, color = name, group = factor(Rep))) +
+  geom_pointrange(aes(ymin = Fm - sig_Fm, ymax = Fm + sig_Fm), 
+                position=position_dodge(width = .5)) +
+  scale_color_viridis_d() +
+  geom_hline(yintercept = 1.0398) +
+  labs(title = "OX-I on CFAMS061720",
+       subtitle = "OX-I/18B used as normalizing standard",
+       x = NULL) +
+  theme_classic()
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+## Summary data
+
+Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re),
+sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence
+interval on the mean.
+
+```{r, echo=FALSE}
+data %>% 
+  select(name, Fm, sig_Fm) %>% 
+  group_by(name) %>% 
+  summarise("Mean Fm" = mean(Fm),
+            "Mean RE" = mean(sig_Fm),
+            "Std Dev" = sd(Fm),
+            "95% CI" = paste(signif(mean(Fm) - ci(Fm), digits = 5), "-",
+                             signif(mean(Fm) + ci(Fm), digits = 5)),
+            N = n()
+  )
+```
+
+
+## Statistical tests
+
+Analysis of Variance (ANOVA) should show us if groups show a significant difference in means. F-statistics under 3 and p-values greater than 0.005 indicate that we can
+not reject the null hypothesis (groups are the same).
+
+Note that although the groups don't look different, this isn't really enough data to do this reliably.
+
+```{r}
+ data %>% 
+   select(name, Fm, sig_Fm) %>% 
+   do(tidy(aov(Fm ~ name, data = .)))
+```
+
