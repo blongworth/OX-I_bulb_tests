@@ -68,7 +68,6 @@ ggplot(aes(name, Fm, color = name, group = factor(Rep))) +
        subtitle = "OX-I/18B used as normalizing standard",
        x = NULL) +
   theme_classic()
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 ```
 
 ## Summary data
@@ -77,7 +76,7 @@ Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re),
 sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence
 interval on the mean.
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, message=FALSE}
 data %>% 
   select(name, Fm, sig_Fm) %>% 
   group_by(name) %>% 
