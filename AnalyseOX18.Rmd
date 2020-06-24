@@ -1,0 +1,171 @@
+---
+title: "OX-I/18 Bulb tests"
+author: "Brett Longworth"
+date: "March 29, 2018"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# Summary
+
+Results from the OX-I/18A OX-I/18B bulb tests. Data are examined as raw ratios
+(with online d13C correction applied), and as normalized using snicser with
+OX-I/15 as the normalizing standard. Data are not blank corrected, but this
+should not affect the results. Summary plots and relevant summary data are
+below.
+
+
+## Setup
+
+```{r, warning=FALSE, message=FALSE}
+library(broom)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(amstools)
+
+options(digits = 5)
+
+#define CI
+ci <- function(x) 1.96 * sqrt((var(x)/length(x)))
+```
+
+
+## Read the data...
+
+```{r}
+# load usams
+usams <- getWheel("USAMS032818") %>%
+  filter(wheel_pos < 42,
+         !grepl("Standard", sample_name)) %>%
+  mutate(run = "USAMSA")
+# load cfams
+cfams <- getWheel("CFAMS032718") %>% 
+  filter(wheel_pos > 88) %>%
+  mutate(run = "CFAMS")
+
+# second usams
+usamsb <- read.delim("/mnt/shared/USAMS/Results/USAMS032818_TargetTable.xls") %>%
+  filter(Pos < 42,
+         !grepl("Standard", SampleName),
+         !grepl("OX-II", SampleName)) %>%
+  mutate(run = "USAMSB")
+  
+#Combine runs
+data <- rbind(usams, cfams)
+
+#Just look at OX-I
+data <- data %>% 
+  filter(!grepl("OX-II", sample_name)) %>%
+  mutate(system = substr(wheel, 0, 5))
+
+# Read the raw data...
+# load usams
+usamsr <- getRawWheel("USAMS032818") %>%
+  filter(wheel_pos < 42,
+         !grepl("Standard", sample_name))
+# load cfams
+cfamsr <- getRawWheel("CFAMS032718") %>% 
+  filter(wheel_pos > 88)
+
+#Combine runs
+rdata <- rbind(usamsr, cfamsr)
+
+#Just look at OX-I
+rdata <- rdata %>% 
+  filter(!grepl("OX-II", sample_name)) %>%
+  mutate(system = substr(wheel, 0, 5))
+```
+
+## Summary plots
+
+### CFAMS and USAMS data
+
+```{r, echo=FALSE}
+ggplot(data, aes(sample_name, fm_corr, color = system)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 1.0398)
+```
+
+### USAMS second run
+
+I took a second run of the USAMS samples to see if OXI/18B was repeatably a little high. It came back into line with the other gas samples in this run.
+
+```{r, echo=FALSE}
+ggplot(usamsb, aes(SampleName, NormRat)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 1.0398)
+```
+
+### Raw data, online 13C corrected
+
+Difference between systems is expected with unnormalized data.
+
+```{r, echo=FALSE}
+ggplot(rdata, aes(sample_name, corr_14_12, color = system)) +
+  geom_boxplot() +
+  theme(axis.text.x  = element_text(angle=90)) +
+  facet_grid(. ~ system)
+```
+
+## Summary data
+
+Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re),
+sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence
+interval on the mean.
+
+```{r, echo=FALSE}
+sum <- data %>% 
+  select(sample_name, system, fm_corr, sig_fm_corr) %>% 
+  group_by(system, sample_name) %>% 
+  summarise("Mean Fm" = mean(fm_corr),
+            "Mean RE" = mean(sig_fm_corr),
+            "Std Dev" = sd(fm_corr),
+            "95% CI" = paste(signif(mean(fm_corr) - ci(fm_corr), digits = 5), "-",
+                             signif(mean(fm_corr) + ci(fm_corr), digits = 5)),
+            N = n()
+  )
+kable(sum)
+```
+
+
+## Statistical tests
+
+Analysis of Variance (ANOVA) should show us if groups show a significant difference in means. F-statistics under 3 and p-values greater than 0.005 indicate that we can
+not reject the null hypothesis (groups are the same).
+
+### An analysis of variance for each system separately...
+
+```{r}
+ aov <- data %>% 
+   select(sample_name, system, fm_corr, sig_fm_corr) %>% 
+   group_by(system) %>%
+   do(tidy(aov(fm_corr ~ sample_name, data = .)))
+ kable(aov)
+```
+
+### And together, using run and sample type as factors....
+
+```{r}
+data.aov <- aov(fm_corr ~ sample_name * system, data)
+kable(tidy(data.aov))
+```
+
+### The same analysis with the raw data.
+
+The increased p-statistic reflects the similarity in means among the raw data.
+
+```{r}
+datar.aov <- aov(corr_14_12 ~ sample_name, rdata)
+kable(tidy(datar.aov))
+```
+
+For all analyses, we can accept the null hypothesis (means are the same) on pretty much any level.
+
+### Summary data from the ANOVA...
+```{r}
+print(model.tables(data.aov,"means"),digits=5)
+```
+
