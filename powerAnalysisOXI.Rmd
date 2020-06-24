@@ -1,0 +1,83 @@
+---
+title: "Power analysis of standard tests"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+library(pwr)
+```
+
+## Power test
+
+This is a power test using the following parameters.
+
+* n is the number of observations
+* sd is the standard deviation of the measurements
+* delta is the true difference in means
+* sig.level is the significance of the power estimate
+* power is the chance that the experiment determines a real difference
+
+```{r}
+n <- 10
+delta <- 0.001 # this is delta
+sd <- 0.004^2
+
+d <- delta/sd
+pwr.t.test(n = n, d = d, sig.level = 0.01)
+```
+
+The value of delta is `r delta`
+```{r}
+# Plot sample size curves for detecting correlations of
+# various sizes.
+
+library(pwr)
+
+# range of deviances
+d <- seq(.001/sd,.005/sd,.002/sd)
+nd <- length(d)
+
+# power values
+p <- seq(.4,.9,.1)
+np <- length(p)
+
+# obtain sample sizes
+samsize <- array(numeric(nd*np), dim=c(nd,np))
+for (i in 1:np){
+  for (j in 1:nd){
+    result <- pwr.t.test(n = NULL, d = d[j],
+    sig.level = .05, power = p[i],
+    alternative = "two.sided")
+    samsize[j,i] <- ceiling(result$n)
+  }
+}
+
+# set up graph
+xrange <- range(r)
+yrange <- round(range(samsize))
+colors <- rainbow(length(p))
+plot(xrange, yrange, type="n",
+  xlab="Correlation Coefficient (r)",
+  ylab="Sample Size (n)" )
+
+# add power curves
+for (i in 1:np){
+  lines(r, samsize[,i], type="l", lwd=2, col=colors[i])
+}
+
+# add annotation (grid lines, title, legend) 
+abline(v=0, h=seq(0,yrange[2],50), lty=2, col="grey89")
+abline(h=0, v=seq(xrange[1],xrange[2],.02), lty=2,
+   col="grey89")
+title("Sample Size Estimation for Correlation Studies\n
+  Sig=0.05 (Two-tailed)")
+legend("topright", title="Power", as.character(p),
+   fill=colors)
+```
+
