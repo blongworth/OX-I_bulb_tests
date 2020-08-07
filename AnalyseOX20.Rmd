@@ -1,7 +1,7 @@
 ---
 title: "OX-I/20 Bulb tests"
 author: "Brett Longworth"
-date: "June 23, 2020"
+date: "July 13, 2020"
 output:
   html_document:
     df_print: paged
@@ -10,10 +10,9 @@ output:
 
 # Summary
 
-Results from the OX-I/20 bulb tests. Data are examined as raw ratios
-(with online d13C correction applied), and as normalized using snicser with
-OX-I/18 as the normalizing standard. Data are not blank corrected, but this
-should not affect the results. Summary plots and relevant summary data are
+Results from the OX-I/20 bulb tests. Data are examined as normalized ratios
+(with online d13C correction applied), and as blank corrected data using snicser with
+OX-I/18 as the normalizing standard. Summary plots and relevant summary data are
 below.
 
 
@@ -23,51 +22,68 @@ below.
 library(broom)
 library(knitr)
 library(dplyr)
+library(stringr)
 library(ggplot2)
 library(amstools)
+library(gt)
 
 options(digits = 5)
 
 #define CI
 ci <- function(x) 1.96 * sqrt((var(x)/length(x)))
+
+# wheels to examine
+wheels <- c("CFAMS061720", "CFAMS071020")
 ```
 
 
 ## Read the data...
 
 ```{r}
-# load cfams
-data <- getWheel("CFAMS061720") %>% 
-  filter(grepl("O[xX]", sample_name),
-         wheel_pos != 84) %>%
+# Function to get data
+getBulbOx <- function(wheels) {
+getWheel(wheels) %>% 
+  filter(str_detect(sample_name, "^OX-?[I1][ \\/]") | 
+         str_detect(sample_name, "^Oxalic Acid I ")) %>% 
   mutate(system = substr(wheel, 0, 5),
          name = recode(sample_name,
                       "OX-1/18 B UCI-1681B" = "OX-I/18B",
                       "Oxalic Acid I granules (SRM 4990 B HOxI)" = "OX-I Solid",
+                      "OXI/20A UCI#1684A " = "OX-I/20A",
                       "OXI/20B UCI#1684B " = "OX-I/20B",
                       "OXI/20C UCI#1684AC" = "OX-I/20C"),
          Fm = ifelse(is.na(fm_mb_corr), fm_corr, fm_mb_corr),
-         sig_Fm = ifelse(is.na(fm_mb_corr), sig_fm_corr, sig_fm_mb_corr)) %>% 
-  group_by(sample_name) %>% 
+         sig_Fm = ifelse(is.na(fm_mb_corr), sig_fm_corr, sig_fm_mb_corr),
+         norm_err = pmax(int_err, ext_err)) %>% 
+  group_by(sample_name, wheel) %>% 
     mutate(Rep = 1:length(Fm)) %>%
   ungroup()
+  
+}
+
+data <- getBulbOx(wheels) 
 ```
+
+# Normalized data
+
+These data are normalized to OX-I/18B, but have no blank correction. Errors are the larger of the repeatablity or counting statistical error.
 
 ## Summary plots
 
-### CFAMS and USAMS data
-
 ```{r, echo=FALSE}
 data %>% 
-ggplot(aes(name, Fm, color = name, group = factor(Rep))) +
-  geom_pointrange(aes(ymin = Fm - sig_Fm, ymax = Fm + sig_Fm), 
+  ggplot(aes(name, norm_ratio, color = name, group = factor(Rep))) +
+  geom_boxplot(aes(group = name), outlier.shape = NA) +
+  geom_pointrange(aes(ymin = norm_ratio - norm_err,
+                      ymax = norm_ratio + norm_err), 
                 position=position_dodge(width = .5)) +
   scale_color_viridis_d() +
   geom_hline(yintercept = 1.0398) +
-  labs(title = "OX-I on CFAMS061720",
+  labs(title = "OX-I on CFAMS061720 and CFAMS071020",
        subtitle = "OX-I/18B used as normalizing standard",
        x = NULL) +
-  theme_classic()
+  theme_classic() +
+  facet_grid(rows = vars(wheel))
 ```
 
 ## Summary data
@@ -78,15 +94,19 @@ interval on the mean.
 
 ```{r, echo=FALSE, message=FALSE}
 data %>% 
-  select(name, Fm, sig_Fm) %>% 
-  group_by(name) %>% 
+  select(wheel, name, "Fm" = norm_ratio, "sig_Fm" = norm_err) %>% 
+  group_by(wheel, name) %>% 
   summarise("Mean Fm" = mean(Fm),
             "Mean RE" = mean(sig_Fm),
             "Std Dev" = sd(Fm),
             "95% CI" = paste(signif(mean(Fm) - ci(Fm), digits = 5), "-",
                              signif(mean(Fm) + ci(Fm), digits = 5)),
             N = n()
-  )
+  ) %>% 
+  gt %>% 
+  tab_header(title = "Summary data per wheel for normalized OX-I",
+             subtitle = "No blank correction") %>% 
+  fmt_number(columns = c(3:5), decimals = 4)
 ```
 
 
@@ -95,11 +115,71 @@ data %>%
 Analysis of Variance (ANOVA) should show us if groups show a significant difference in means. F-statistics under 3 and p-values greater than 0.005 indicate that we can
 not reject the null hypothesis (groups are the same).
 
-Note that although the groups don't look different, this isn't really enough data to do this reliably.
 
 ```{r}
  data %>% 
-   select(name, Fm, sig_Fm) %>% 
-   do(tidy(aov(Fm ~ name, data = .)))
+  select(wheel, name, "Fm" = norm_ratio, "sig_Fm" = norm_err) %>% 
+  group_by(wheel) %>% 
+  do(tidy(aov(Fm ~ name, data = .))) %>% 
+  gt
+```
+
+# Blank corrected data
+
+Blank correction should be very small and add little error for GS samples. OC samples (solid OX-I) will see a positive correction and slightly increased error.
+
+## Summary plots
+
+```{r, echo=FALSE}
+data %>% 
+ggplot(aes(name, Fm, color = name, group = factor(Rep))) +
+  geom_boxplot(aes(group = name), outlier.shape = NA) +
+  geom_pointrange(aes(ymin = Fm - sig_Fm, ymax = Fm + sig_Fm), 
+                position=position_dodge(width = .5)) +
+  scale_color_viridis_d() +
+  geom_hline(yintercept = 1.0398) +
+  labs(title = "OX-I on CFAMS061720 and CFAMS061020",
+       subtitle = "OX-I/18B used as normalizing standard, Blank correction applied",
+       x = NULL) +
+  theme_classic() +
+  facet_grid(rows = vars(wheel))
+```
+
+## Summary data
+
+Data summarized by run. Fields are mean Fm (Fm.m), mean reported error (Fm.re),
+sd of Fm (Fm.sd), and the low (CIL) and high (CIH) ends of the 95% confidence
+interval on the mean.
+
+```{r, echo=FALSE, message=FALSE}
+data %>% 
+  select(wheel, name, Fm, sig_Fm) %>% 
+  group_by(wheel, name) %>% 
+  summarise("Mean Fm" = mean(Fm),
+            "Mean RE" = mean(sig_Fm),
+            "Std Dev" = sd(Fm),
+            "95% CI" = paste(signif(mean(Fm) - ci(Fm), digits = 5), "-",
+                             signif(mean(Fm) + ci(Fm), digits = 5)),
+            N = n()
+  ) %>% 
+  gt %>% 
+  tab_header(title = "Summary data per wheel for normalized OX-I",
+             subtitle = "Blank correction applied") %>% 
+  fmt_number(columns = c(3:5), decimals = 4)
+```
+
+
+## Statistical tests
+
+Analysis of Variance (ANOVA) should show us if groups show a significant difference in means. F-statistics under 3 and p-values greater than 0.005 indicate that we can
+not reject the null hypothesis (groups are the same).
+
+
+```{r}
+ data %>% 
+   select(wheel, name, Fm, sig_Fm) %>% 
+  group_by(wheel) %>% 
+   do(tidy(aov(Fm ~ name, data = .))) %>% 
+  gt
 ```
 
